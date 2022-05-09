@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+3# -*- coding: utf-8 -*-
 """
 Created on Sat Apr 23 12:55:40 2022
 
@@ -29,6 +29,13 @@ m.K5 = pyo.Param(initialize = 1)
 m.K6 = pyo.Param(initialize = 1)
 m.K7 = pyo.Param(initialize = 1) 
 m.K8 = pyo.Param(initialize = 1)
+m.pen1 = pyo.Param(initialize = 1e-2, mutable = True)
+m.pen2 = pyo.Param(initialize = 1e-2, mutable = True)
+
+# pen1_list = [1e-3, 1e-2, 1e-1, 1]
+# pen2_list = [1e-3, 1e-2, 1e-1, 1]
+pen1_list = [0.001]
+pen2_list = [0.1]
 
 #Set
 m.t = dae.ContinuousSet(bounds = (0,m.tf))
@@ -48,8 +55,8 @@ m.SA2A2 = pyo.Var(m.t, domain = pyo.NonNegativeReals)
 m.A2 = pyo.Var(m.t, domain = pyo.NonNegativeReals)
 
 #Variables for flow
-m.FA1 = pyo.Var(m.t, domain = pyo.NonNegativeReals)
-m.FA2 = pyo.Var(m.t, domain = pyo.NonNegativeReals)
+m.FA1 = pyo.Var(m.t, bounds = (0,10))
+m.FA2 = pyo.Var(m.t, bounds = (0,10))
 m.Fout = pyo.Var(m.t, domain = pyo.NonNegativeReals)
 m.du1 = pyo.Var(m.t)
 m.du2 = pyo.Var(m.t)
@@ -166,16 +173,14 @@ m = discretizer.reduce_collocation_points(m,var=m.FA2,
 
 #objective 
 def _obj(model):
-	return -m.SA1A2[m.tf] +1e-2*sum(m.du1[t]**2 for t in m.t) + +1e-2*sum(m.du2[t]**2 for t in m.t) 
+	return -m.SA1A2[m.tf] +m.pen1*sum(m.du1[t]**2 for t in m.t) +m.pen2*sum(m.du2[t]**2 for t in m.t) 
 m.obj = pyo.Objective(rule=_obj)
 
 solver=pyo.SolverFactory('ipopt')
 
-results = solver.solve(m,tee=True)
-print(pyo.value(m.SA1A2[m.tf] ))
-#print(m.FA1.display())
 
 def plotter(subplot, x, *series, **kwds): 
+
     plt.subplot(subplot) 
     for i, y in enumerate(series): 
         #plt.plot(x, [pyo.value(y[t]) for t in x], 'brgcmk'[i%6]+kwds.get('points',''))
@@ -183,15 +188,28 @@ def plotter(subplot, x, *series, **kwds):
     plt.title(kwds.get('title',''))
     plt.legend(tuple(y.getname() for y in series)) 
     plt.xlabel(x.getname())
+    
+max_conc = []
+for i in pen1_list:
+    m.pen1 = i
+    for j in pen2_list:
+        m.pen2 = j
+        results = solver.solve(m,tee=True)
+        max_conc.append(pyo.value(m.SA1A2[m.tf]))
+        print(pyo.value(m.SA1A2[m.tf]))
+        figure, axes = plt.subplots(1,3)
+        figure.tight_layout()
+        plotter(131, m.t ,m.SA1, m.SA1A2, title='Concentration vs time') 
+        plotter(132, m.t, m.FA1, title='FA1 flowrate', points='o') 
+        plotter(133, m.t, m.FA2, title='FA2 flowrate', points='o') 
+        
+        plt.show()
+        
 
-plotter(131, m.t ,m.SA1, m.SA1A2, title='Differential Variables') 
-plotter(132, m.t, m.FA1, title='Control Variable', points='o') 
-plotter(133, m.t, m.FA2, title='Control Variable', points='o') 
-plt.show()
+        
+        
 
-
-
-
-
-
-
+# plotter(131, m.t ,m.SA1, m.SA1A2, title='Differential Variables') 
+# plotter(132, m.t, m.FA1, title='Control Variable', points='o') 
+# plotter(133, m.t, m.FA2, title='Control Variable', points='o') 
+# plt.show()
