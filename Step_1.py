@@ -14,15 +14,15 @@ m = pyo.ConcreteModel()
 #Fixed concentration of A1 in the injection streams
 CA1_in = 0.1
 V = 1
-
-
+#pen_list = [0, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1]
+pen_list = [0.01]
 
 
 #Parameters
 m.tf = pyo.Param(initialize = 10)
 m.K1 = pyo.Param(initialize = 10)
 m.K2 = pyo.Param(initialize = 1)
-
+m.pen = pyo.Param(initialize = 1e-2, mutable = True)
 #Set
 m.t = dae.ContinuousSet(bounds = (0,m.tf))
 
@@ -73,7 +73,7 @@ def _init_conditions(model):
     yield m.S[0] == 1
     yield m.FA1[0] == 0
     
-    
+
 m.init_conditions = pyo.ConstraintList(rule=_init_conditions)
 
 
@@ -87,32 +87,38 @@ m = discretizer.reduce_collocation_points(m,var=m.FA1,
 
 #objective 
 def _obj(model):
-	return -m.SA1[m.tf] +1e-2*sum(m.du[t]**2 for t in m.t) 
+	return -m.SA1[m.tf] +m.pen*sum(m.du[t]**2 for t in m.t) 
 m.obj = pyo.Objective(rule=_obj)
 
-#m.FA1.fix(1.6)
-solver=pyo.SolverFactory('ipopt')
-
-results = solver.solve(m,tee=True)
-print(pyo.value(m.SA1[m.tf]))
-#print(m.FA1.display())
 
 def plotter(subplot, x, *series, **kwds): 
     plt.subplot(subplot) 
+   
     for i, y in enumerate(series): 
         #plt.plot(x, [pyo.value(y[t]) for t in x], 'brgcmk'[i%6]+kwds.get('points',''))
         plt.plot(x, [pyo.value(y[t]) for t in x])
+        
     plt.title(kwds.get('title',''))
     plt.legend(tuple(y.getname() for y in series)) 
     plt.xlabel(x.getname())
 
-plotter(121, m.t, m.SA1 ,m.A1, m.SA1A1, title='Differential Variables') 
-plotter(122, m.t, m.FA1, title='Control Variable', points='o') 
-plt.show()
 
 
-
-
-
-
-
+solver=pyo.SolverFactory('ipopt')
+max_conc = []
+for i in pen_list:
+    m.pen = i 
+    results = solver.solve(m,tee=True)
+    max_conc.append(pyo.value(m.SA1[m.tf]))
+    print(pyo.value(m.SA1[m.tf]))
+    figure, axes = plt.subplots(1,2)
+    figure.tight_layout()
+    plotter(121, m.t, m.SA1 ,m.A1, m.SA1A1, title='Concentration vs time') 
+    plotter(122, m.t, m.FA1, title='Flow rate vs time') 
+    plt.show()
+# fig = plt.figure()
+# plt.plot(pen_list, max_conc, 'o-')
+# plt.xlabel('Penalty Parameter')
+# plt.ylabel('Concentrationof desired Product (SA1[tf])')
+# plt.xscale('log')
+# plt.title('Concentration vs Penalty Parameter- Step 1')
